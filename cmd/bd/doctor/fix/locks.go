@@ -97,6 +97,20 @@ func StaleLockFiles(path string) error {
 		}
 	}
 
+	// Remove legacy daemon files (daemon.pid, daemon.lock, bd.sock)
+	// These are from the old daemon subsystem removed in v0.53.0.
+	legacyFiles := []string{"daemon.pid", "daemon.lock", "bd.sock"}
+	for _, name := range legacyFiles {
+		p := filepath.Join(beadsDir, name)
+		if _, err := os.Stat(p); err == nil {
+			if err := os.Remove(p); err != nil {
+				errors = append(errors, fmt.Sprintf("%s: %v", name, err))
+			} else {
+				removed = append(removed, name)
+			}
+		}
+	}
+
 	if len(removed) > 0 {
 		fmt.Printf("  Removed stale lock files: %s\n", strings.Join(removed, ", "))
 	}

@@ -357,16 +357,15 @@ func IsRunning(beadsDir string) (*State, error) {
 
 	// Check if process is alive
 	if !isProcessAlive(pid) {
-		// Process is dead — stale PID file
-		_ = os.Remove(pidPath(beadsDir))
+		// Process is dead — clean up all stale server files
+		cleanStaleServerFiles(beadsDir)
 		return &State{Running: false}, nil
 	}
 
 	// Verify it's actually a dolt sql-server process
 	if !isDoltProcess(pid) {
-		// PID was reused by another process
-		_ = os.Remove(pidPath(beadsDir))
-		_ = os.Remove(portPath(beadsDir))
+		// PID was reused by another process — clean up all stale server files
+		cleanStaleServerFiles(beadsDir)
 		return &State{Running: false}, nil
 	}
 
@@ -382,6 +381,45 @@ func IsRunning(beadsDir string) (*State, error) {
 		Port:    port,
 		DataDir: ResolveDoltDir(beadsDir),
 	}, nil
+}
+
+// cleanStaleServerFiles removes all server state files left behind by a dead
+// or replaced process. Called by IsRunning when it detects a stale PID.
+// Reuses cleanupStateFiles for the core files and also removes the lock file
+// which cleanupStateFiles (used during graceful stop) leaves intact.
+func cleanStaleServerFiles(beadsDir string) {
+	cleanupStateFiles(beadsDir)
+	_ = os.Remove(lockPath(beadsDir))
+}
+
+// CleanStaleDaemonFiles removes leftover daemon files from a .beads directory.
+// This handles both current server files (dolt-server.*) when the process is
+// dead, and legacy daemon files (daemon.pid, daemon.lock, bd.sock) that may
+// persist from older installations. Safe to call on any bd startup.
+func CleanStaleDaemonFiles(beadsDir string) int {
+	removed := 0
+
+	// Check current dolt-server PID — if the process is dead, clean all server files.
+	if data, err := os.ReadFile(pidPath(beadsDir)); err == nil {
+		if pid, err := strconv.Atoi(strings.TrimSpace(string(data))); err == nil && pid > 0 {
+			if !isProcessAlive(pid) || !isDoltProcess(pid) {
+				cleanStaleServerFiles(beadsDir)
+				removed++
+			}
+		}
+	}
+
+	// Clean legacy daemon files (removed in v0.53.0, may still exist)
+	legacyFiles := []string{"daemon.pid", "daemon.lock", "bd.sock"}
+	for _, name := range legacyFiles {
+		p := filepath.Join(beadsDir, name)
+		if _, err := os.Stat(p); err == nil {
+			_ = os.Remove(p)
+			removed++
+		}
+	}
+
+	return removed
 }
 
 // EnsureRunning starts the server if it is not already running.

@@ -93,6 +93,16 @@ func CheckStaleLockFiles(path string) DoctorCheck {
 		}
 	}
 
+	// Check for legacy daemon files (removed in v0.53.0)
+	legacyFiles := []string{"daemon.pid", "daemon.lock", "bd.sock"}
+	for _, name := range legacyFiles {
+		p := filepath.Join(beadsDir, name)
+		if _, err := os.Stat(p); err == nil {
+			staleFiles = append(staleFiles, name)
+			details = append(details, fmt.Sprintf("%s: legacy daemon file (daemon removed in v0.53.0)", name))
+		}
+	}
+
 	if len(staleFiles) == 0 {
 		return DoctorCheck{
 			Name:     "Lock Files",

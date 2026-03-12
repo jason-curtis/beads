@@ -126,11 +126,17 @@ func TestIsRunningStalePID(t *testing.T) {
 		}
 	}()
 
-	// Write a PID file with a definitely-dead PID
-	pidFile := filepath.Join(dir, "dolt-server.pid")
-	// PID 99999999 almost certainly doesn't exist
-	if err := os.WriteFile(pidFile, []byte("99999999"), 0600); err != nil {
-		t.Fatal(err)
+	// Write all server state files with a definitely-dead PID
+	staleFiles := map[string]string{
+		"dolt-server.pid":      "99999999",
+		"dolt-server.port":     "3307",
+		"dolt-server.lock":     "",
+		"dolt-server.activity": "1710000000",
+	}
+	for name, content := range staleFiles {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
 	}
 
 	state, err := IsRunning(dir)
@@ -141,9 +147,57 @@ func TestIsRunningStalePID(t *testing.T) {
 		t.Error("expected Running=false for stale PID")
 	}
 
-	// PID file should have been cleaned up
-	if _, err := os.Stat(pidFile); !os.IsNotExist(err) {
-		t.Error("expected stale PID file to be removed")
+	// All stale server files should have been cleaned up
+	for name := range staleFiles {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Errorf("expected stale file %s to be removed", name)
+		}
+	}
+}
+
+func TestCleanStaleDaemonFiles(t *testing.T) {
+	dir := t.TempDir()
+
+	// Unset GT_ROOT so we don't pick up a real daemon PID
+	orig := os.Getenv("GT_ROOT")
+	os.Unsetenv("GT_ROOT")
+	defer func() {
+		if orig != "" {
+			os.Setenv("GT_ROOT", orig)
+		}
+	}()
+
+	// Create stale server files with a dead PID
+	if err := os.WriteFile(filepath.Join(dir, "dolt-server.pid"), []byte("99999999"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(dir, "dolt-server.port"), []byte("3307"), 0600); err != nil {
+		t.Fatal(err)
+	}
+
+	// Create legacy daemon files
+	legacyFiles := []string{"daemon.pid", "daemon.lock", "bd.sock"}
+	for _, name := range legacyFiles {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte("stale"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	removed := CleanStaleDaemonFiles(dir)
+	if removed == 0 {
+		t.Error("expected CleanStaleDaemonFiles to remove files")
+	}
+
+	// Legacy files should be removed
+	for _, name := range legacyFiles {
+		if _, err := os.Stat(filepath.Join(dir, name)); !os.IsNotExist(err) {
+			t.Errorf("expected legacy file %s to be removed", name)
+		}
+	}
+
+	// Stale server PID file should be removed
+	if _, err := os.Stat(filepath.Join(dir, "dolt-server.pid")); !os.IsNotExist(err) {
+		t.Error("expected stale dolt-server.pid to be removed")
 	}
 }
 

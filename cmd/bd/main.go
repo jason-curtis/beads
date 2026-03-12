@@ -532,6 +532,13 @@ var rootCmd = &cobra.Command{
 
 		doltCfg.Path = doltPath
 
+		// Pre-flight: clean stale daemon/server files left by crashed processes.
+		// Stale PID/lock/socket files from unclean shutdowns (SIGKILL, power loss)
+		// can cause bd to hang or produce opaque errors on the next invocation.
+		if removed := doltserver.CleanStaleDaemonFiles(beadsDir); removed > 0 {
+			debug.Logf("cleaned %d stale daemon/server file(s) from %s", removed, beadsDir)
+		}
+
 		// Pre-flight: clean stale noms LOCK files left by crashed Dolt processes.
 		// These prevent the Dolt server from opening databases (SIGSEGV or
 		// "database is locked"). Safe because we haven't connected yet.

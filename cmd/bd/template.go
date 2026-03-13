@@ -491,6 +491,14 @@ func cloneSubgraph(ctx context.Context, s *dolt.DoltStore, subgraph *TemplateSub
 				issueAssignee = opts.Assignee
 			}
 
+			// Determine issue type: ephemeral wisps get type=molecule (not epic)
+			// so they are properly filtered by bd list's --include-infra filter.
+			// Proto roots are typed as epic (template), but spawned wisps are molecules.
+			issueType := oldIssue.IssueType
+			if opts.Ephemeral && oldIssue.ID == subgraph.Root.ID && issueType == types.TypeEpic {
+				issueType = types.TypeMolecule
+			}
+
 			newIssue := &types.Issue{
 				// ID will be set below based on bonding options
 				Title:              substituteVariables(oldIssue.Title, opts.Vars),
@@ -500,7 +508,7 @@ func cloneSubgraph(ctx context.Context, s *dolt.DoltStore, subgraph *TemplateSub
 				Notes:              substituteVariables(oldIssue.Notes, opts.Vars),
 				Status:             types.StatusOpen, // Always start fresh
 				Priority:           oldIssue.Priority,
-				IssueType:          oldIssue.IssueType,
+				IssueType:          issueType,
 				Assignee:           issueAssignee,
 				EstimatedMinutes:   oldIssue.EstimatedMinutes,
 				Ephemeral:          opts.Ephemeral, // mark for cleanup when closed

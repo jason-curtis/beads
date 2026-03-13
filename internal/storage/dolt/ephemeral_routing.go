@@ -19,7 +19,7 @@ func IsEphemeralID(id string) bool {
 // defaultInfraTypes are the built-in infrastructure types routed to the wisps table.
 // Override via DB config "types.infra" or config.yaml types.infra.
 // Unexported to prevent external mutation; use DefaultInfraTypes() for a safe copy.
-var defaultInfraTypes = []string{"agent", "rig", "role", "message"}
+var defaultInfraTypes = []string{"agent", "rig", "role", "message", "molecule"}
 
 // DefaultInfraTypes returns a copy of the built-in infrastructure types.
 func DefaultInfraTypes() []string {

@@ -1858,36 +1858,9 @@ func TestInitDatabaseFlag(t *testing.T) {
 func TestInitBackendFlag(t *testing.T) {
 	bd := buildBDForInitTests(t)
 
-	t.Run("sqlite_shows_deprecation", func(t *testing.T) {
-		tmpDir := t.TempDir()
-
-		cmd := exec.Command(bd, "init", "--backend", "sqlite", "--quiet")
-		cmd.Dir = tmpDir
-		cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
-		out, err := cmd.CombinedOutput()
-		if err == nil {
-			t.Fatal("Expected non-zero exit for --backend=sqlite, but command succeeded")
-		}
-
-		outStr := string(out)
-		if !strings.Contains(outStr, "DEPRECATED") {
-			t.Errorf("Expected deprecation notice, got: %s", outStr)
-		}
-		if !strings.Contains(outStr, "SQLite backend has been removed") {
-			t.Errorf("Expected 'SQLite backend has been removed' message, got: %s", outStr)
-		}
-		if !strings.Contains(outStr, "bd migrate --to-dolt") {
-			t.Errorf("Expected migration instructions, got: %s", outStr)
-		}
-
-		// Verify no .beads directory was created
-		beadsDir := filepath.Join(tmpDir, ".beads")
-		if _, err := os.Stat(beadsDir); err == nil {
-			t.Error(".beads directory should not be created when --backend=sqlite is used")
-		}
-	})
-
-	t.Run("unknown_backend_errors", func(t *testing.T) {
+	// sqlite and other non-dolt backends: --backend flag was removed in v1.0.0,
+	// so any use of --backend is rejected by cobra as an unknown flag.
+	t.Run("unknown_backend_flag_errors", func(t *testing.T) {
 		tmpDir := t.TempDir()
 
 		cmd := exec.Command(bd, "init", "--backend", "postgres", "--quiet")
@@ -1899,21 +1872,8 @@ func TestInitBackendFlag(t *testing.T) {
 		}
 
 		outStr := string(out)
-		if !strings.Contains(outStr, "unknown backend") {
-			t.Errorf("Expected 'unknown backend' error, got: %s", outStr)
-		}
-	})
-
-	t.Run("dolt_backend_succeeds", func(t *testing.T) {
-		skipIfNoDolt(t)
-		tmpDir := t.TempDir()
-
-		cmd := exec.Command(bd, "init", "--backend", "dolt", "--quiet")
-		cmd.Dir = tmpDir
-		cmd.Env = append(os.Environ(), "BEADS_NO_DAEMON=1")
-		out, err := cmd.CombinedOutput()
-		if err != nil {
-			t.Fatalf("bd init --backend=dolt should succeed: %v\n%s", err, out)
+		if !strings.Contains(outStr, "unknown flag") {
+			t.Errorf("Expected 'unknown flag' error, got: %s", outStr)
 		}
 	})
 

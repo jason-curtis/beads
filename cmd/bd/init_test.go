@@ -1404,10 +1404,10 @@ func TestInit_WithBEADS_DIR_DoltBackend(t *testing.T) {
 		t.Skip("Skipping BEADS_DIR Dolt test on Windows")
 	}
 
-	// Check if dolt is available
-	if _, err := exec.LookPath("dolt"); err != nil {
-		t.Skip("Dolt not installed, skipping Dolt backend test")
-	}
+	// Require a running test server — binary presence alone is not enough.
+	// Without a server, bd init would try to auto-start one in the temp dir,
+	// leaving orphan dolt sql-server processes after the test exits.
+	skipIfNoDolt(t)
 
 	// Reset global state
 	origDBPath := dbPath
@@ -1469,6 +1469,60 @@ func TestInit_WithBEADS_DIR_DoltBackend(t *testing.T) {
 
 // Note: TestInit_WithoutBEADS_DIR_NoBehaviorChange and TestInit_BEADS_DB_OverridesBEADS_DIR
 // are now subtests of TestInitBEADS_DIR above.
+
+// TestInitPassesServerFlag verifies that bd init --server-port and --server-host
+// connect to the specified server rather than auto-starting a new one.
+// Regression test for bd-2ww: without this fix, bd init would spawn an orphan
+// dolt sql-server process when BEADS_TEST_MODE=1 forced port 1 but AutoStart
+// was still true, causing EnsureRunning to start a real server before failing.
+func TestInitPassesServerFlag(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("Skipping server flag test on Windows")
+	}
+	skipIfNoDolt(t)
+
+	saveAndRestoreGlobals(t)
+	dbPath = ""
+	beads.ResetCaches()
+	git.ResetCaches()
+	t.Cleanup(func() {
+		beads.ResetCaches()
+		git.ResetCaches()
+	})
+
+	// Reset Cobra flags including server connection flags
+	initCmd.Flags().Set("prefix", "")
+	initCmd.Flags().Set("quiet", "true")
+	initCmd.Flags().Set("server-host", "")
+	initCmd.Flags().Set("server-port", "0")
+	t.Cleanup(func() {
+		initCmd.Flags().Set("server-host", "")
+		initCmd.Flags().Set("server-port", "0")
+	})
+
+	tmpDir := t.TempDir()
+	t.Chdir(tmpDir)
+
+	// Run bd init with explicit --server-port pointing at the test server.
+	// With the fix (BEADS_TEST_MODE=1 → AutoStart=false), bd init must NOT
+	// spawn a new dolt process — it must connect to the supplied port.
+	rootCmd.SetArgs([]string{
+		"init",
+		"--prefix", "srv-flag-test",
+		"--quiet",
+		"--server-host", "127.0.0.1",
+		"--server-port", fmt.Sprintf("%d", testDoltServerPort),
+	})
+	if err := rootCmd.Execute(); err != nil {
+		t.Fatalf("bd init --server-port failed: %v", err)
+	}
+
+	// Verify .beads was created at CWD
+	beadsDir := filepath.Join(tmpDir, ".beads")
+	if _, err := os.Stat(beadsDir); os.IsNotExist(err) {
+		t.Fatal(".beads directory was not created")
+	}
+}
 
 // TestInitDoltMetadata verifies that bd init --backend dolt writes and persists
 // all 3 tracking metadata fields (bd_version, repo_id, clone_id) via verifyMetadata.

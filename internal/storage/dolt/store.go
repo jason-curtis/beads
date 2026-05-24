@@ -513,10 +513,13 @@ func applyConfigDefaults(cfg *Config) {
 		cfg.ServerPort = DefaultSQLPort
 	}
 	// Test mode guard: if we'd hit production, force port 1 instead.
+	// Also disable auto-start so tests can't spawn orphan dolt sql-server
+	// processes — tests manage server lifecycle via testutil helpers.
 	if os.Getenv("BEADS_TEST_MODE") == "1" {
 		if cfg.ServerPort == 0 || cfg.ServerPort == DefaultSQLPort {
 			cfg.ServerPort = 1
 		}
+		cfg.AutoStart = false
 	}
 	if cfg.ServerUser == "" {
 		cfg.ServerUser = "root"
